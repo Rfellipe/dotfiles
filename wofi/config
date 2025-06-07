@@ -1,0 +1,6 @@
+allow_images=true
+allow_markup=true
+hide_scroll=true
+term=kitty
+width 1000 
+height 390

@@ -1,0 +1,12 @@
+[Unit]
+Description=Load external mic as ALSA source into PipeWire
+After=pipewire.service pipewire-pulse.service
+
+[Service]
+ExecStart=pactl load-module module-alsa-source device=hw:2,0
+Type=oneshot
+# RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+

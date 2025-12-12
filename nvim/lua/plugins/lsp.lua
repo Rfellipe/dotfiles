@@ -19,12 +19,10 @@ return {
           "tailwindcss",
         },
       },
-      config = function() end,
     },
   },
   opts = {
     servers = {
-      config = function() end,
       ["*"] = {
         capabilities = lsputils.capabilities,
       },

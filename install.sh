@@ -13,7 +13,7 @@ install() {
   fi
 
   echo "Installing $1"
-  sudo pacman -S $1 --no-confirm
+  sudo pacman -S $1 --noconfirm
   return 0
 }
 
@@ -24,30 +24,48 @@ if [ "$ans" == "y" ]; then
   git submodule update
 fi
 
-DEPENDENCIES=("hyprland" "neovim" "curl" "rofi" "waybar" "kitty")
-DOTS=("fastfetch" "hypr" "kitty" "nvim" "rofi" "systemd" "waybar")
+DEPENDENCIES=("hyprland" "neovim" "curl" "rofi" "waybar" "kitty" "swaync" "cliphist" "base-devel" "zip" "unzip" "tar" "lazygit" "ripgrep" "hyprpaper" "fd")
+DOTS=("fastfetch" "hypr" "kitty" "nvim" "rofi" "systemd" "waybar" ".bashrc" ".gitconfig")
 CONFIG_DIR="$HOME/.config"
 
 echo "Install all dependencies? [y/n]"
 read -r ans
 if [ "$ans" == "y" ]; then
-  sudo pacman -Syyu "${DEPENDENCIES[@]}" --no-confirm
+  sudo pacman -Syyu "${DEPENDENCIES[@]}" --noconfirm
 
-  if [[ -n $(cargo -V) ]]; then
-    echo "Installing cargo..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  if ! type "$nvm" >/dev/null; then
+    echo "Installing NVM (Node Version Manager)"
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | sh
+
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"                   # This loads nvm
+    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" # This loads nvm bash_completion
   fi
 
-  echo "installing hyprsome..."
-  cargo install hyprsome
-# else
-#   return 1
+  if ! type "$node" >/dev/null; then
+    echo "Installing Node.JS and NPM"
+    nvm install --lts
+  fi
+
+  if ! type "$go" >/dev/null; then
+    sudo rm -rf /usr/local/go
+    install go
+
+    export PATH=$PATH:/usr/local/go/bin
+  fi
 fi
 
 for dfs in "${DOTS[@]}"; do
   target="${CONFIG_DIR}/$dfs"
   src="$PWD/$dfs"
   backup_root="${CONFIG_DIR}/.dots.bak/"
+
+  if [[ "$dfs" == ".bashrc" || "$dfs" == ".gitconfig" ]]; then
+    echo "Creating symlink of $dfs"
+    rm "$HOME/$dfs"
+    symlink "$src" "$HOME/$dfs"
+    continue
+  fi
 
   if [[ -e "$target" || -L "$target" ]]; then
     # if it's already the correct symlink, skip

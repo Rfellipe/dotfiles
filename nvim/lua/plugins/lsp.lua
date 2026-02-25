@@ -17,15 +17,13 @@ return {
           "jqls",
           "bashls",
           "tailwindcss",
+          "gopls",
         },
       },
     },
   },
   opts = {
     servers = {
-      ["*"] = {
-        capabilities = lsputils.capabilities,
-      },
       ts_ls = {},
       lua_ls = {},
       pyright = {},
@@ -33,53 +31,43 @@ return {
       jqls = {},
       bashls = {},
       tailwindcss = {},
+      postgres_lsp = {},
+      denols = {},
+      gopls = {},
       clangd = {
-        mason = true,
-        settings = function()
-          vim.api.nvim_create_autocmd("FileType", {
-            pattern = { "c", "cpp", "objc", "objcpp", "cuda" },
-            callback = function(ev)
-              local bufnr = ev.buf
-              local fname = vim.api.nvim_buf_get_name(bufnr)
-              if fname == "" then
-                return
-              end
-
-              local root_dir = lsputils.get_root_dir(fname)
-              if not root_dir then
-                return
-              end
-
-              -- Example:
-              -- root_dir = /home/fellipe/Projects/C/Zephyr/applications
-              --
-              -- Zephyr project root is one directory above:
-              -- /home/fellipe/Projects/C/Zephyr
-              local zephyr_root = vim.fs.dirname(root_dir)
-
-              local build_dir = root_dir .. "/build"
-              local build_db = build_dir .. "/compile_commands.json"
-
-              local cmd = { "clangd" }
-
-              if lsputils.path_exists(build_db) then
-                cmd = {
-                  "clangd",
-                  "--compile-commands-dir=" .. build_dir,
-                  "--path-mappings=/workdir=" .. zephyr_root,
-                }
-              end
-
-              vim.lsp.start({
-                name = "clangd",
-                cmd = cmd,
-                root_dir = root_dir,
-                -- on_attach = on_attach,
-                capabilities = lsputils.capabilities,
-              })
-            end,
-          })
-        end,
+        keys = {
+          { "<leader>ch", "<cmd>LspClangdSwitchSourceHeader<cr>", desc = "Switch Source/Header (C/C++)" },
+        },
+        root_markers = {
+          "compile_commands.json",
+          "compile_flags.txt",
+          "configure.ac", -- AutoTools
+          "Makefile",
+          "configure.ac",
+          "configure.in",
+          "config.h.in",
+          "meson.build",
+          "meson_options.txt",
+          "build.ninja",
+          ".git",
+        },
+        capabilities = {
+          offsetEncoding = { "utf-16" },
+        },
+        cmd = {
+          "clangd",
+          "--background-index",
+          "--clang-tidy",
+          "--header-insertion=iwyu",
+          "--completion-style=detailed",
+          "--function-arg-placeholders",
+          "--fallback-style=llvm",
+        },
+        init_options = {
+          usePlaceholders = true,
+          completeUnimported = true,
+          clangdFileStatus = true,
+        },
       },
     },
   },

@@ -1,6 +1,6 @@
 return {
-  { "scottmckendry/cyberdream.nvim", lazy = true },
-  { "nyoom-engineering/oxocarbon.nvim", lazy = true },
+  -- { "scottmckendry/cyberdream.nvim", lazy = true },
+  -- { "nyoom-engineering/oxocarbon.nvim", lazy = true },
   {
     "zootedb0t/citruszest.nvim",
     lazy = false,

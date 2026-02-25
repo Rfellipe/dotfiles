@@ -32,16 +32,6 @@ echo "Install all dependencies? [y/n]"
 read -r ans
 if [ "$ans" == "y" ]; then
   sudo pacman -Syyu "${DEPENDENCIES[@]}" --no-confirm
-
-  if [[ -n $(cargo -V) ]]; then
-    echo "Installing cargo..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-  fi
-
-  echo "installing hyprsome..."
-  cargo install hyprsome
-# else
-#   return 1
 fi
 
 for dfs in "${DOTS[@]}"; do

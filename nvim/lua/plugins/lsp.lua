@@ -18,6 +18,7 @@ return {
           "bashls",
           "tailwindcss",
           "gopls",
+          "postgres_lsp",
         },
       },
     },

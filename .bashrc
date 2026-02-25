@@ -9,7 +9,8 @@
 # export TZ=America/Sao_Paulo
 
 # Fix locale error
-# export LANG=pt_BR
+
+# export LANG=en_US.UTF-8
 
 # Add vim as editor
 export EDITOR=/usr/bin/nvim

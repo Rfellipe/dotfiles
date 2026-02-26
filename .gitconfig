@@ -1,0 +1,9 @@
+[user]
+	name = Fellipe Ribeiro
+  email = felliperibeiro1310@gmail.com
+[color]
+	ui = auto
+[push]
+	default = matching
+[pull]
+	rebase = false

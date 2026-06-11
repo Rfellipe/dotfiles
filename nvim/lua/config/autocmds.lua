@@ -53,6 +53,13 @@ local lsputils = require("util.lsputils")
 --   end,
 -- })
 
+-- vim.api.nvim_create_autocmd("FileType", {
+--   pattern = { "qml" },
+--   callback = function()
+--     vim.b.autoformat = false
+--   end,
+-- })
+
 -- Custom commands
 vim.api.nvim_create_user_command("Bda", "%bdelete", {})
 vim.api.nvim_create_user_command("Bo", '%bdelete | edit # | normal `"', {})
@@ -60,3 +67,19 @@ vim.api.nvim_create_user_command("Bo", '%bdelete | edit # | normal `"', {})
 vim.api.nvim_set_hl(0, "Normal", { bg = "none" })
 vim.api.nvim_set_hl(0, "NormalFloat", { bg = "none" })
 vim.api.nvim_set_hl(0, "NormalNC", { bg = "none" })
+
+function CopyMatches(reg)
+  local hits = {}
+
+  -- Capture matches and add to hits
+  vim.cmd("%s//\\=vim.fn.len(vim.list_extend(hits, { vim.fn.submatch(0) })) > 0 ? vim.fn.submatch(0) : ''/gne")
+
+  reg = reg == "" and "+" or reg
+  -- Join hits and set register
+  vim.fn.setreg(reg, table.concat(hits, "\n") .. "\n")
+end
+
+-- Create command
+vim.api.nvim_create_user_command("CopyMatches", function(opts)
+  CopyMatches(opts.args)
+end, { nargs = "?" })

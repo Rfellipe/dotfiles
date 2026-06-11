@@ -5,6 +5,9 @@
 # If not running interactively, don't do anything
 [[ $- != *i* ]] && return
 
+source $HOME/.bash_completion.sh
+source $HOME/.bash_profile
+
 # --- Exports ---
 # export TZ=America/Sao_Paulo
 
@@ -31,6 +34,9 @@ case ":$PATH:" in
 *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 
+export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
+
 # --- Exports End ---
 
 # --- Aliases ---
@@ -47,6 +53,7 @@ alias zephyr-docker='docker run --rm -ti \
   --device=/dev/ttyUSB0:/dev/ttyUSB0 \
   --group-add $(stat -c "%g" /dev/ttyUSB0) \
   docker.io/zephyrprojectrtos/zephyr-build:main'
+alias gac-vpn="awk -F': '  '/^senha:/ {print $2}' ~/crucial-ssd/GAC/credentials && sudo openvpn --config ~/crucial-ssd/GAC/new-vpn.ovpn --daemon"
 
 # --- Aliases End ---
 
@@ -60,3 +67,13 @@ alias zephyr-docker='docker run --rm -ti \
 
 PS1="\[\e[1;36m\]\u@\h \W -> \[\e[m\]"
 PS2="\[\e[1;36m\]> \[\e[m\]"
+
+# pnpm
+export PNPM_HOME="/home/fellipe/.local/share/pnpm"
+case ":$PATH:" in
+*":$PNPM_HOME:"*) ;;
+*) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
+. "/home/fellipe/.deno/env"
+source /home/fellipe/.local/share/bash-completion/completions/deno.bash

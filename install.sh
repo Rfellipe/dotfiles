@@ -24,8 +24,8 @@ if [ "$ans" == "y" ]; then
   git submodule update
 fi
 
-DEPENDENCIES=("hyprland" "neovim" "curl" "rofi" "waybar" "kitty" "swaync" "cliphist" "base-devel" "zip" "unzip" "tar" "lazygit" "ripgrep" "hyprpaper" "fd")
-DOTS=("fastfetch" "hypr" "kitty" "nvim" "rofi" "systemd" "waybar" ".bashrc" ".gitconfig")
+DEPENDENCIES=("hyprland" "neovim" "curl" "rofi" "waybar" "kitty" "swaync" "cliphist" "base-devel" "zip" "unzip" "tar" "lazygit" "ripgrep" "hyprpaper" "fd" "ranger")
+DOTS=("fastfetch" "hypr" "kitty" "nvim" "ranger" "rofi" "systemd" "waybar" ".bashrc" ".gitconfig")
 CONFIG_DIR="$HOME/.config"
 
 echo "Install all dependencies? [y/n]"

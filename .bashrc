@@ -9,11 +9,9 @@ source $HOME/.bash_completion.sh
 source $HOME/.bash_profile
 
 # --- Exports ---
-# export TZ=America/Sao_Paulo
 
-# Fix locale error
-
-# export LANG=en_US.UTF-8
+export XDG_CURRENT_DESKTOP=Hyprland
+export XDG_SESSION_DESKTOP=Hyprland
 
 # Add vim as editor
 export EDITOR=/usr/bin/nvim
@@ -68,12 +66,5 @@ alias gac-vpn="awk -F': '  '/^senha:/ {print $2}' ~/crucial-ssd/GAC/credentials 
 PS1="\[\e[1;36m\]\u@\h \W -> \[\e[m\]"
 PS2="\[\e[1;36m\]> \[\e[m\]"
 
-# pnpm
-export PNPM_HOME="/home/fellipe/.local/share/pnpm"
-case ":$PATH:" in
-*":$PNPM_HOME:"*) ;;
-*) export PATH="$PNPM_HOME:$PATH" ;;
-esac
-# pnpm end
 . "/home/fellipe/.deno/env"
 source /home/fellipe/.local/share/bash-completion/completions/deno.bash

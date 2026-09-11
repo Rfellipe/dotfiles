@@ -17,15 +17,8 @@ install() {
   return 0
 }
 
-echo "Start git submodule? [y/n]"
-read -r ans
-if [ "$ans" == "y" ]; then
-  git submodule init
-  git submodule update
-fi
-
 DEPENDENCIES=("hyprland" "neovim" "curl" "rofi" "waybar" "kitty" "swaync" "cliphist" "base-devel" "zip" "unzip" "tar" "lazygit" "ripgrep" "hyprpaper" "fd" "ranger")
-DOTS=("fastfetch" "hypr" "kitty" "nvim" "ranger" "rofi" "systemd" "waybar" ".bashrc" ".gitconfig")
+DOTS=("fastfetch" "hypr" "kitty" "nvim" "ranger" "rofi" "systemd" "waybar" "bashrc" "bash_completion" "bash_profile" "gitconfig" "lesskey")
 CONFIG_DIR="$HOME/.config"
 
 echo "Install all dependencies? [y/n]"
@@ -49,10 +42,10 @@ for dfs in "${DOTS[@]}"; do
   src="$PWD/$dfs"
   backup_root="${CONFIG_DIR}/.dots.bak/"
 
-  if [[ "$dfs" == ".bashrc" || "$dfs" == ".gitconfig" ]]; then
+  if [[ "$dfs" == "bashrc" || "$dfs" == "bash_completion" || "$dfs" == "bash_profile" || "$dfs" == "gitconfig" ]]; then
     echo "Creating symlink of $dfs"
     rm "$HOME/$dfs"
-    symlink "$src" "$HOME/$dfs"
+    symlink "$src" "$HOME/.$dfs"
     continue
   fi
 

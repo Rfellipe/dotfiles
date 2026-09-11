@@ -1,0 +1,1777 @@
+#!/usr/bin/sh bash
+
+source /home/fellipe/.local/share/bash-completion/completions/deno.bash
+
+# bash completion V2 for supabase                             -*- shell-script -*-
+
+__supabase_debug()
+{
+    if [[ -n ${BASH_COMP_DEBUG_FILE-} ]]; then
+        echo "$*" >> "${BASH_COMP_DEBUG_FILE}"
+    fi
+}
+
+# Macs have bash3 for which the bash-completion package doesn't include
+# _init_completion. This is a minimal version of that function.
+__supabase_init_completion()
+{
+    COMPREPLY=()
+    _get_comp_words_by_ref "$@" cur prev words cword
+}
+
+# This function calls the supabase program to obtain the completion
+# results and the directive.  It fills the 'out' and 'directive' vars.
+__supabase_get_completion_results() {
+    local requestComp lastParam lastChar args
+
+    # Prepare the command to request completions for the program.
+    # Calling ${words[0]} instead of directly supabase allows handling aliases
+    args=("${words[@]:1}")
+    requestComp="${words[0]} __complete ${args[*]}"
+
+    lastParam=${words[$((${#words[@]}-1))]}
+    lastChar=${lastParam:$((${#lastParam}-1)):1}
+    __supabase_debug "lastParam ${lastParam}, lastChar ${lastChar}"
+
+    if [[ -z ${cur} && ${lastChar} != = ]]; then
+        # If the last parameter is complete (there is a space following it)
+        # We add an extra empty parameter so we can indicate this to the go method.
+        __supabase_debug "Adding extra empty parameter"
+        requestComp="${requestComp} ''"
+    fi
+
+    # When completing a flag with an = (e.g., supabase -n=<TAB>)
+    # bash focuses on the part after the =, so we need to remove
+    # the flag part from $cur
+    if [[ ${cur} == -*=* ]]; then
+        cur="${cur#*=}"
+    fi
+
+    __supabase_debug "Calling ${requestComp}"
+    # Use eval to handle any environment variables and such
+    out=$(eval "${requestComp}" 2>/dev/null)
+
+    # Extract the directive integer at the very end of the output following a colon (:)
+    directive=${out##*:}
+    # Remove the directive
+    out=${out%:*}
+    if [[ ${directive} == "${out}" ]]; then
+        # There is not directive specified
+        directive=0
+    fi
+    __supabase_debug "The completion directive is: ${directive}"
+    __supabase_debug "The completions are: ${out}"
+}
+
+__supabase_process_completion_results() {
+    local shellCompDirectiveError=1
+    local shellCompDirectiveNoSpace=2
+    local shellCompDirectiveNoFileComp=4
+    local shellCompDirectiveFilterFileExt=8
+    local shellCompDirectiveFilterDirs=16
+    local shellCompDirectiveKeepOrder=32
+
+    if (((directive & shellCompDirectiveError) != 0)); then
+        # Error code.  No completion.
+        __supabase_debug "Received error from custom completion go code"
+        return
+    else
+        if (((directive & shellCompDirectiveNoSpace) != 0)); then
+            if [[ $(type -t compopt) == builtin ]]; then
+                __supabase_debug "Activating no space"
+                compopt -o nospace
+            else
+                __supabase_debug "No space directive not supported in this version of bash"
+            fi
+        fi
+        if (((directive & shellCompDirectiveKeepOrder) != 0)); then
+            if [[ $(type -t compopt) == builtin ]]; then
+                # no sort isn't supported for bash less than < 4.4
+                if [[ ${BASH_VERSINFO[0]} -lt 4 || ( ${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -lt 4 ) ]]; then
+                    __supabase_debug "No sort directive not supported in this version of bash"
+                else
+                    __supabase_debug "Activating keep order"
+                    compopt -o nosort
+                fi
+            else
+                __supabase_debug "No sort directive not supported in this version of bash"
+            fi
+        fi
+        if (((directive & shellCompDirectiveNoFileComp) != 0)); then
+            if [[ $(type -t compopt) == builtin ]]; then
+                __supabase_debug "Activating no file completion"
+                compopt +o default
+            else
+                __supabase_debug "No file completion directive not supported in this version of bash"
+            fi
+        fi
+    fi
+
+    # Separate activeHelp from normal completions
+    local completions=()
+    local activeHelp=()
+    __supabase_extract_activeHelp
+
+    if (((directive & shellCompDirectiveFilterFileExt) != 0)); then
+        # File extension filtering
+        local fullFilter="" filter filteringCmd
+
+        # Do not use quotes around the $completions variable or else newline
+        # characters will be kept.
+        for filter in ${completions[*]}; do
+            fullFilter+="$filter|"
+        done
+
+        filteringCmd="_filedir $fullFilter"
+        __supabase_debug "File filtering command: $filteringCmd"
+        $filteringCmd
+    elif (((directive & shellCompDirectiveFilterDirs) != 0)); then
+        # File completion for directories only
+
+        local subdir
+        subdir=${completions[0]}
+        if [[ -n $subdir ]]; then
+            __supabase_debug "Listing directories in $subdir"
+            pushd "$subdir" >/dev/null 2>&1 && _filedir -d && popd >/dev/null 2>&1 || return
+        else
+            __supabase_debug "Listing directories in ."
+            _filedir -d
+        fi
+    else
+        __supabase_handle_completion_types
+    fi
+
+    __supabase_handle_special_char "$cur" :
+    __supabase_handle_special_char "$cur" =
+
+    # Print the activeHelp statements before we finish
+    __supabase_handle_activeHelp
+}
+
+__supabase_handle_activeHelp() {
+    # Print the activeHelp statements
+    if ((${#activeHelp[*]} != 0)); then
+        if [ -z $COMP_TYPE ]; then
+            # Bash v3 does not set the COMP_TYPE variable.
+            printf "\n";
+            printf "%s\n" "${activeHelp[@]}"
+            printf "\n"
+            __supabase_reprint_commandLine
+            return
+        fi
+
+        # Only print ActiveHelp on the second TAB press
+        if [ $COMP_TYPE -eq 63 ]; then
+            printf "\n"
+            printf "%s\n" "${activeHelp[@]}"
+
+            if ((${#COMPREPLY[*]} == 0)); then
+                # When there are no completion choices from the program, file completion
+                # may kick in if the program has not disabled it; in such a case, we want
+                # to know if any files will match what the user typed, so that we know if
+                # there will be completions presented, so that we know how to handle ActiveHelp.
+                # To find out, we actually trigger the file completion ourselves;
+                # the call to _filedir will fill COMPREPLY if files match.
+                if (((directive & shellCompDirectiveNoFileComp) == 0)); then
+                    __supabase_debug "Listing files"
+                    _filedir
+                fi
+            fi
+
+            if ((${#COMPREPLY[*]} != 0)); then
+                # If there are completion choices to be shown, print a delimiter.
+                # Re-printing the command-line will automatically be done
+                # by the shell when it prints the completion choices.
+                printf -- "--"
+            else
+                # When there are no completion choices at all, we need
+                # to re-print the command-line since the shell will
+                # not be doing it itself.
+                __supabase_reprint_commandLine
+            fi
+        elif [ $COMP_TYPE -eq 37 ] || [ $COMP_TYPE -eq 42 ]; then
+            # For completion type: menu-complete/menu-complete-backward and insert-completions
+            # the completions are immediately inserted into the command-line, so we first
+            # print the activeHelp message and reprint the command-line since the shell won't.
+            printf "\n"
+            printf "%s\n" "${activeHelp[@]}"
+
+            __supabase_reprint_commandLine
+        fi
+    fi
+}
+
+__supabase_reprint_commandLine() {
+    # The prompt format is only available from bash 4.4.
+    # We test if it is available before using it.
+    if (x=${PS1@P}) 2> /dev/null; then
+        printf "%s" "${PS1@P}${COMP_LINE[@]}"
+    else
+        # Can't print the prompt.  Just print the
+        # text the user had typed, it is workable enough.
+        printf "%s" "${COMP_LINE[@]}"
+    fi
+}
+
+# Separate activeHelp lines from real completions.
+# Fills the $activeHelp and $completions arrays.
+__supabase_extract_activeHelp() {
+    local activeHelpMarker="_activeHelp_ "
+    local endIndex=${#activeHelpMarker}
+
+    while IFS='' read -r comp; do
+        [[ -z $comp ]] && continue
+
+        if [[ ${comp:0:endIndex} == $activeHelpMarker ]]; then
+            comp=${comp:endIndex}
+            __supabase_debug "ActiveHelp found: $comp"
+            if [[ -n $comp ]]; then
+                activeHelp+=("$comp")
+            fi
+        else
+            # Not an activeHelp line but a normal completion
+            completions+=("$comp")
+        fi
+    done <<<"${out}"
+}
+
+__supabase_handle_completion_types() {
+    __supabase_debug "__supabase_handle_completion_types: COMP_TYPE is $COMP_TYPE"
+
+    case $COMP_TYPE in
+    37|42)
+        # Type: menu-complete/menu-complete-backward and insert-completions
+        # If the user requested inserting one completion at a time, or all
+        # completions at once on the command-line we must remove the descriptions.
+        # https://github.com/spf13/cobra/issues/1508
+
+        # If there are no completions, we don't need to do anything
+        (( ${#completions[@]} == 0 )) && return 0
+
+        local tab=$'\t'
+
+        # Strip any description and escape the completion to handled special characters
+        IFS=$'\n' read -ra completions -d '' < <(printf "%q\n" "${completions[@]%%$tab*}")
+
+        # Only consider the completions that match
+        IFS=$'\n' read -ra COMPREPLY -d '' < <(IFS=$'\n'; compgen -W "${completions[*]}" -- "${cur}")
+
+        # compgen looses the escaping so we need to escape all completions again since they will
+        # all be inserted on the command-line.
+        IFS=$'\n' read -ra COMPREPLY -d '' < <(printf "%q\n" "${COMPREPLY[@]}")
+        ;;
+
+    *)
+        # Type: complete (normal completion)
+        __supabase_handle_standard_completion_case
+        ;;
+    esac
+}
+
+__supabase_handle_standard_completion_case() {
+    local tab=$'\t'
+
+    # If there are no completions, we don't need to do anything
+    (( ${#completions[@]} == 0 )) && return 0
+
+    # Short circuit to optimize if we don't have descriptions
+    if [[ "${completions[*]}" != *$tab* ]]; then
+        # First, escape the completions to handle special characters
+        IFS=$'\n' read -ra completions -d '' < <(printf "%q\n" "${completions[@]}")
+        # Only consider the completions that match what the user typed
+        IFS=$'\n' read -ra COMPREPLY -d '' < <(IFS=$'\n'; compgen -W "${completions[*]}" -- "${cur}")
+
+        # compgen looses the escaping so, if there is only a single completion, we need to
+        # escape it again because it will be inserted on the command-line.  If there are multiple
+        # completions, we don't want to escape them because they will be printed in a list
+        # and we don't want to show escape characters in that list.
+        if (( ${#COMPREPLY[@]} == 1 )); then
+            COMPREPLY[0]=$(printf "%q" "${COMPREPLY[0]}")
+        fi
+        return 0
+    fi
+
+    local longest=0
+    local compline
+    # Look for the longest completion so that we can format things nicely
+    while IFS='' read -r compline; do
+        [[ -z $compline ]] && continue
+
+        # Before checking if the completion matches what the user typed,
+        # we need to strip any description and escape the completion to handle special
+        # characters because those escape characters are part of what the user typed.
+        # Don't call "printf" in a sub-shell because it will be much slower
+        # since we are in a loop.
+        printf -v comp "%q" "${compline%%$tab*}" &>/dev/null || comp=$(printf "%q" "${compline%%$tab*}")
+
+        # Only consider the completions that match
+        [[ $comp == "$cur"* ]] || continue
+
+        # The completions matches.  Add it to the list of full completions including
+        # its description.  We don't escape the completion because it may get printed
+        # in a list if there are more than one and we don't want show escape characters
+        # in that list.
+        COMPREPLY+=("$compline")
+
+        # Strip any description before checking the length, and again, don't escape
+        # the completion because this length is only used when printing the completions
+        # in a list and we don't want show escape characters in that list.
+        comp=${compline%%$tab*}
+        if ((${#comp}>longest)); then
+            longest=${#comp}
+        fi
+    done < <(printf "%s\n" "${completions[@]}")
+
+    # If there is a single completion left, remove the description text and escape any special characters
+    if ((${#COMPREPLY[*]} == 1)); then
+        __supabase_debug "COMPREPLY[0]: ${COMPREPLY[0]}"
+        COMPREPLY[0]=$(printf "%q" "${COMPREPLY[0]%%$tab*}")
+        __supabase_debug "Removed description from single completion, which is now: ${COMPREPLY[0]}"
+    else
+        # Format the descriptions
+        __supabase_format_comp_descriptions $longest
+    fi
+}
+
+__supabase_handle_special_char()
+{
+    local comp="$1"
+    local char=$2
+    if [[ "$comp" == *${char}* && "$COMP_WORDBREAKS" == *${char}* ]]; then
+        local word=${comp%"${comp##*${char}}"}
+        local idx=${#COMPREPLY[*]}
+        while ((--idx >= 0)); do
+            COMPREPLY[idx]=${COMPREPLY[idx]#"$word"}
+        done
+    fi
+}
+
+__supabase_format_comp_descriptions()
+{
+    local tab=$'\t'
+    local comp desc maxdesclength
+    local longest=$1
+
+    local i ci
+    for ci in ${!COMPREPLY[*]}; do
+        comp=${COMPREPLY[ci]}
+        # Properly format the description string which follows a tab character if there is one
+        if [[ "$comp" == *$tab* ]]; then
+            __supabase_debug "Original comp: $comp"
+            desc=${comp#*$tab}
+            comp=${comp%%$tab*}
+
+            # $COLUMNS stores the current shell width.
+            # Remove an extra 4 because we add 2 spaces and 2 parentheses.
+            maxdesclength=$(( COLUMNS - longest - 4 ))
+
+            # Make sure we can fit a description of at least 8 characters
+            # if we are to align the descriptions.
+            if ((maxdesclength > 8)); then
+                # Add the proper number of spaces to align the descriptions
+                for ((i = ${#comp} ; i < longest ; i++)); do
+                    comp+=" "
+                done
+            else
+                # Don't pad the descriptions so we can fit more text after the completion
+                maxdesclength=$(( COLUMNS - ${#comp} - 4 ))
+            fi
+
+            # If there is enough space for any description text,
+            # truncate the descriptions that are too long for the shell width
+            if ((maxdesclength > 0)); then
+                if ((${#desc} > maxdesclength)); then
+                    desc=${desc:0:$(( maxdesclength - 1 ))}
+                    desc+="…"
+                fi
+                comp+="  ($desc)"
+            fi
+            COMPREPLY[ci]=$comp
+            __supabase_debug "Final comp: $comp"
+        fi
+    done
+}
+
+__start_supabase()
+{
+    local cur prev words cword split
+
+    COMPREPLY=()
+
+    # Call _init_completion from the bash-completion package
+    # to prepare the arguments properly
+    if declare -F _init_completion >/dev/null 2>&1; then
+        _init_completion -n =: || return
+    else
+        __supabase_init_completion -n =: || return
+    fi
+
+    __supabase_debug
+    __supabase_debug "========= starting completion logic =========="
+    __supabase_debug "cur is ${cur}, words[*] is ${words[*]}, #words[@] is ${#words[@]}, cword is $cword"
+
+    # The user could have moved the cursor backwards on the command-line.
+    # We need to trigger completion from the $cword location, so we need
+    # to truncate the command-line ($words) up to the $cword location.
+    words=("${words[@]:0:$cword+1}")
+    __supabase_debug "Truncated words[*]: ${words[*]},"
+
+    local out directive
+    __supabase_get_completion_results
+    __supabase_process_completion_results
+}
+
+if [[ $(type -t compopt) = "builtin" ]]; then
+    complete -o default -F __start_supabase supabase
+else
+    complete -o default -o nospace -F __start_supabase supabase
+fi
+
+
+# Bash auto-completion for west subcommands and flags. To initialize, run
+#
+#     source west-completion.bash
+#
+# To make it persistent, add it to e.g. your .bashrc.
+
+__west_previous_extglob_setting=$(shopt -p extglob)
+shopt -s extglob
+
+# The following function is based on code from:
+#
+#   bash_completion - programmable completion functions for bash 3.2+
+#
+#   Copyright © 2006-2008, Ian Macdonald <ian@caliban.org>
+#             © 2009-2010, Bash Completion Maintainers
+#                     <bash-completion-devel@lists.alioth.debian.org>
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2, or (at your option)
+#   any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program; if not, see <http://www.gnu.org/licenses/>.
+#
+#   The latest version of this software can be obtained here:
+#
+#   http://bash-completion.alioth.debian.org/
+#
+#   RELEASE: 2.x
+
+# This function can be used to access a tokenized list of words
+# on the command line:
+#
+#	__git_reassemble_comp_words_by_ref '=:'
+#	if test "${words_[cword_-1]}" = -w
+#	then
+#		...
+#	fi
+#
+# The argument should be a collection of characters from the list of
+# word completion separators (COMP_WORDBREAKS) to treat as ordinary
+# characters.
+#
+# This is roughly equivalent to going back in time and setting
+# COMP_WORDBREAKS to exclude those characters.  The intent is to
+# make option types like --date=<type> and <rev>:<path> easy to
+# recognize by treating each shell word as a single token.
+#
+# It is best not to set COMP_WORDBREAKS directly because the value is
+# shared with other completion scripts.  By the time the completion
+# function gets called, COMP_WORDS has already been populated so local
+# changes to COMP_WORDBREAKS have no effect.
+#
+# Output: words_, cword_, cur_.
+
+__west_reassemble_comp_words_by_ref()
+{
+	local exclude i j first
+	# Which word separators to exclude?
+	exclude="${1//[^$COMP_WORDBREAKS]}"
+	cword_=$COMP_CWORD
+	if [ -z "$exclude" ]; then
+		words_=("${COMP_WORDS[@]}")
+		return
+	fi
+	# List of word completion separators has shrunk;
+	# re-assemble words to complete.
+	for ((i=0, j=0; i < ${#COMP_WORDS[@]}; i++, j++)); do
+		# Append each nonempty word consisting of just
+		# word separator characters to the current word.
+		first=t
+		while
+			[ $i -gt 0 ] &&
+			[ -n "${COMP_WORDS[$i]}" ] &&
+			# word consists of excluded word separators
+			[ "${COMP_WORDS[$i]//[^$exclude]}" = "${COMP_WORDS[$i]}" ]
+		do
+			# Attach to the previous token,
+			# unless the previous token is the command name.
+			if [ $j -ge 2 ] && [ -n "$first" ]; then
+				((j--))
+			fi
+			first=
+			words_[$j]=${words_[j]}${COMP_WORDS[i]}
+			if [ $i = $COMP_CWORD ]; then
+				cword_=$j
+			fi
+			if (($i < ${#COMP_WORDS[@]} - 1)); then
+				((i++))
+			else
+				# Done.
+				return
+			fi
+		done
+		words_[$j]=${words_[j]}${COMP_WORDS[i]}
+		if [ $i = $COMP_CWORD ]; then
+			cword_=$j
+		fi
+	done
+}
+
+if ! type _get_comp_words_by_ref >/dev/null 2>&1; then
+_get_comp_words_by_ref ()
+{
+	local exclude cur_ words_ cword_
+	if [ "$1" = "-n" ]; then
+		exclude=$2
+		shift 2
+	fi
+	__west_reassemble_comp_words_by_ref "$exclude"
+	cur_=${words_[cword_]}
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		cur)
+			cur=$cur_
+			;;
+		prev)
+			prev=${words_[$cword_-1]}
+			;;
+		words)
+			words=("${words_[@]}")
+			;;
+		cword)
+			cword=$cword_
+			;;
+		esac
+		shift
+	done
+}
+fi
+
+if ! type _tilde >/dev/null 2>&1; then
+# Perform tilde (~) completion
+# @return  True (0) if completion needs further processing,
+#          False (> 0) if tilde is followed by a valid username, completions
+#          are put in COMPREPLY and no further processing is necessary.
+_tilde()
+{
+    local result=0
+    if [[ $1 == \~* && $1 != */* ]]; then
+        # Try generate ~username completions
+        COMPREPLY=( $( compgen -P '~' -u -- "${1#\~}" ) )
+        result=${#COMPREPLY[@]}
+        # 2>/dev/null for direct invocation, e.g. in the _tilde unit test
+        [[ $result -gt 0 ]] && compopt -o filenames 2>/dev/null
+    fi
+    return $result
+}
+fi
+
+if ! type _quote_readline_by_ref >/dev/null 2>&1; then
+# This function quotes the argument in a way so that readline dequoting
+# results in the original argument.  This is necessary for at least
+# `compgen' which requires its arguments quoted/escaped:
+#
+#     $ ls "a'b/"
+#     c
+#     $ compgen -f "a'b/"       # Wrong, doesn't return output
+#     $ compgen -f "a\'b/"      # Good
+#     a\'b/c
+#
+# See also:
+# - http://lists.gnu.org/archive/html/bug-bash/2009-03/msg00155.html
+# - http://www.mail-archive.com/bash-completion-devel@lists.alioth.\
+#   debian.org/msg01944.html
+# @param $1  Argument to quote
+# @param $2  Name of variable to return result to
+_quote_readline_by_ref()
+{
+    if [ -z "$1" ]; then
+        # avoid quoting if empty
+        printf -v $2 %s "$1"
+    elif [[ $1 == \'* ]]; then
+        # Leave out first character
+        printf -v $2 %s "${1:1}"
+    elif [[ $1 == \~* ]]; then
+        # avoid escaping first ~
+        printf -v $2 \~%q "${1:1}"
+    else
+        printf -v $2 %q "$1"
+    fi
+
+    # Replace double escaping ( \\ ) by single ( \ )
+    # This happens always when argument is already escaped at cmdline,
+    # and passed to this function as e.g.: file\ with\ spaces
+    [[ ${!2} == *\\* ]] && printf -v $2 %s "${1//\\\\/\\}"
+
+    # If result becomes quoted like this: $'string', re-evaluate in order to
+    # drop the additional quoting.  See also: http://www.mail-archive.com/
+    # bash-completion-devel@lists.alioth.debian.org/msg01942.html
+    [[ ${!2} == \$* ]] && eval $2=${!2}
+} # _quote_readline_by_ref()
+fi
+
+# This function turns on "-o filenames" behavior dynamically. It is present
+# for bash < 4 reasons. See http://bugs.debian.org/272660#64 for info about
+# the bash < 4 compgen hack.
+_compopt_o_filenames()
+{
+    # We test for compopt availability first because directly invoking it on
+    # bash < 4 at this point may cause terminal echo to be turned off for some
+    # reason, see https://bugzilla.redhat.com/653669 for more info.
+    type compopt &>/dev/null && compopt -o filenames 2>/dev/null || \
+        compgen -f /non-existing-dir/ >/dev/null
+}
+
+if ! type _filedir >/dev/null 2>&1; then
+# This function performs file and directory completion. It's better than
+# simply using 'compgen -f', because it honours spaces in filenames.
+# @param $1  If `-d', complete only on directories.  Otherwise filter/pick only
+#            completions with `.$1' and the uppercase version of it as file
+#            extension.
+#
+_filedir()
+{
+    local IFS=$'\n'
+
+    _tilde "$cur" || return
+
+    local -a toks
+    local x tmp
+
+    x=$( compgen -d -- "$cur" ) &&
+    while read -r tmp; do
+        toks+=( "$tmp" )
+    done <<< "$x"
+
+    if [[ "$1" != -d ]]; then
+        local quoted
+        _quote_readline_by_ref "$cur" quoted
+
+        # Munge xspec to contain uppercase version too
+        # http://thread.gmane.org/gmane.comp.shells.bash.bugs/15294/focus=15306
+        local xspec=${1:+"!*.@($1|${1^^})"}
+        x=$( compgen -f -X "$xspec" -- $quoted ) &&
+        while read -r tmp; do
+            toks+=( "$tmp" )
+        done <<< "$x"
+
+        # Try without filter if it failed to produce anything and configured to
+        [[ -n ${COMP_FILEDIR_FALLBACK:-} && -n "$1" && ${#toks[@]} -lt 1 ]] && \
+            x=$( compgen -f -- $quoted ) &&
+            while read -r tmp; do
+                toks+=( "$tmp" )
+            done <<< "$x"
+    fi
+
+    if [[ ${#toks[@]} -ne 0 ]]; then
+        # 2>/dev/null for direct invocation, e.g. in the _filedir unit test
+        _compopt_o_filenames
+        COMPREPLY+=( "${toks[@]}" )
+    fi
+} # _filedir()
+fi
+
+# Misc helpers taken from Docker:
+# https://github.com/docker/docker-ce/blob/master/components/cli/contrib/completion/bash/docker
+
+# __west_pos_first_nonflag finds the position of the first word that is neither
+# option nor an option's argument. If there are options that require arguments,
+# you should pass a glob describing those options, e.g. "--option1|-o|--option2"
+# Use this function to restrict completions to exact positions after the argument list.
+__west_pos_first_nonflag()
+{
+	local argument_flags=$1
+
+	local counter=$((${subcommand_pos:-${command_pos}} + 1))
+	while [ "$counter" -le "$cword" ]; do
+		if [ -n "$argument_flags" ] && eval "case '${words[$counter]}' in $argument_flags) true ;; *) false ;; esac"; then
+			(( counter++ ))
+			# eat "=" in case of --option=arg syntax
+			[ "${words[$counter]}" = "=" ] && (( counter++ ))
+		else
+			case "${words[$counter]}" in
+				-*)
+					;;
+				*)
+					break
+					;;
+			esac
+		fi
+
+		# Bash splits words at "=", retaining "=" as a word, examples:
+		# "--debug=false" => 3 words, "--log-opt syslog-facility=daemon" => 4 words
+		while [ "${words[$counter + 1]}" = "=" ] ; do
+			counter=$(( counter + 2))
+		done
+
+		(( counter++ ))
+	done
+
+	echo $counter
+}
+
+# __west_map_key_of_current_option returns `key` if we are currently completing the
+# value of a map option (`key=value`) which matches the extglob given as an argument.
+# This function is needed for key-specific completions.
+__west_map_key_of_current_option()
+{
+	local glob="$1"
+
+	local key glob_pos
+	if [ "$cur" = "=" ] ; then        # key= case
+		key="$prev"
+		glob_pos=$((cword - 2))
+	elif [[ $cur == *=* ]] ; then     # key=value case (OSX)
+		key=${cur%=*}
+		glob_pos=$((cword - 1))
+	elif [ "$prev" = "=" ] ; then
+		key=${words[$cword - 2]}  # key=value case
+		glob_pos=$((cword - 3))
+	else
+		return
+	fi
+
+	[ "${words[$glob_pos]}" = "=" ] && ((glob_pos--))  # --option=key=value syntax
+
+	[[ ${words[$glob_pos]} == @($glob) ]] && echo "$key"
+}
+
+# __west_value_of_option returns the value of the first option matching `option_glob`.
+# Valid values for `option_glob` are option names like `--log-level` and globs like
+# `--log-level|-l`
+# Only positions between the command and the current word are considered.
+__west_value_of_option()
+{
+	local option_extglob=$(__west_to_extglob "$1")
+
+	local counter=$((command_pos + 1))
+	while [ "$counter" -lt "$cword" ]; do
+		case ${words[$counter]} in
+			$option_extglob )
+				echo "${words[$counter + 1]}"
+				break
+				;;
+		esac
+		(( counter++ ))
+	done
+}
+
+# __west_to_alternatives transforms a multiline list of strings into a single line
+# string with the words separated by `|`.
+# This is used to prepare arguments to __west_pos_first_nonflag().
+__west_to_alternatives()
+{
+	local parts=( $1 )
+	local IFS='|'
+	echo "${parts[*]}"
+}
+
+# __west_to_extglob transforms a multiline list of options into an extglob pattern
+# suitable for use in case statements.
+__west_to_extglob()
+{
+	local extglob=$( __west_to_alternatives "$1" )
+	echo "@($extglob)"
+}
+
+__set_comp_dirs()
+{
+	_filedir -d
+}
+
+__set_comp_files()
+{
+	_filedir
+}
+
+# Sets completions for $cur, from the possibilities in $1..n
+__set_comp()
+{
+	# "${*:1}" gives a single argument with arguments $1..n
+	COMPREPLY=($(compgen -W "${*:1}" -- "$cur"))
+}
+
+
+__west_x()
+{
+	west 2>/dev/null "$@"
+}
+
+__set_comp_west_projs()
+{
+	__set_comp "$(__west_x list --format={name} "$@")"
+}
+
+__set_comp_west_boards()
+{
+	__set_comp "$(__west_x boards --all-targets "$@")"
+}
+
+__set_comp_west_shields()
+{
+	__set_comp "$(__west_x shields "$@")"
+}
+
+__set_comp_west_snippets()
+{
+	__set_comp "$(__west_x snippets --format={name} "$@")"
+}
+
+__comp_west_west()
+{
+	case "$prev" in
+		--zephyr-base|-z)
+			__set_comp_dirs
+			return
+			;;
+		# We don't know how to autocomplete any others
+		$(__west_to_extglob "$global_args_opts") )
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $global_bool_opts $global_args_opts
+			;;
+		*)
+			local counter=$( __west_pos_first_nonflag "$(__west_to_extglob "$global_args_opts")" )
+			if [ "$cword" -eq "$counter" ]; then
+				__set_comp ${cmds[*]}
+			fi
+			;;
+	esac
+}
+
+__comp_west_init()
+{
+	local dir_opts="
+		--manifest -m
+		--local -l
+	"
+
+	local bool_opts="
+		--manifest-rev --mr
+		--manifest-file --mf
+	"
+
+	all_opts="$dir_opts $bool_opts"
+
+	case "$prev" in
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west_update()
+{
+	local bool_opts="
+		--stats
+		--narrow -n
+		--keep-descendants -k
+		--rebase -r
+	"
+
+	local dir_opts="
+		--name-cache
+		--path-cache
+	"
+
+	local other_opts="
+		--fetch -f
+		--fetch-opt -o
+	"
+
+	all_opts="$dir_opts $bool_opts $other_opts"
+
+	case "$prev" in
+		# We don't know how to autocomplete those
+		$(__west_to_extglob "$other_opts") )
+			return
+			;;
+
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+		*)
+			__set_comp_west_projs
+			;;
+	esac
+}
+
+__comp_west_list()
+{
+	local other_opts="
+		--format -f
+	"
+
+	local bool_opts="
+		--all -a
+	"
+
+	all_opts="$other_opts $bool_opts"
+
+	case "$prev" in
+		# We don't know how to autocomplete those
+		$(__west_to_extglob "$other_opts") )
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+		*)
+			__set_comp_west_projs
+			;;
+	esac
+}
+
+__comp_west_manifest()
+{
+	local bool_opts="
+		--resolve
+		--freeze
+		--validate
+		--path
+	"
+	local file_opts="
+		--out -o
+	"
+
+	all_opts="$bool_opts $file_opts"
+
+	case "$prev" in
+		$(__west_to_extglob "$file_opts") )
+			__set_comp_files
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west_diff()
+{
+	local bool_opts="
+		--all -a
+	"
+
+	case "$cur" in
+		-*)
+			__set_comp $bool_opts
+			;;
+		*)
+			__set_comp_west_projs
+			;;
+	esac
+}
+
+__comp_west_status()
+{
+	local bool_opts="
+		--all -a
+	"
+	case "$cur" in
+		-*)
+			__set_comp $bool_opts
+			;;
+		*)
+			__set_comp_west_projs
+			;;
+	esac
+}
+
+__comp_west_forall()
+{
+	local bool_opts="
+		--all -a
+	"
+	local other_opts="
+		-c
+	"
+
+	all_opts="$bool_opts $other_opts"
+	case "$prev" in
+		# We don't know how to autocomplete those
+		$(__west_to_extglob "$other_opts") )
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+		*)
+			__set_comp_west_projs
+			;;
+	esac
+}
+
+__comp_west_config()
+{
+	local bool_opts="
+		--list -l
+		--delete -d
+		--delete-all -D
+		--global
+		--local
+		--system
+	"
+
+	case "$cur" in
+		-*)
+			__set_comp $bool_opts
+			;;
+	esac
+}
+
+__comp_west_help()
+{
+	case "$cur" in
+		*)
+			local counter=$( __west_pos_first_nonflag "$(__west_to_extglob "$global_args_opts")" )
+			if [ "$cword" -eq "$counter" ]; then
+				__set_comp ${cmds[*]}
+			fi
+			;;
+	esac
+}
+
+# Zephyr extension commands
+__comp_west_completion()
+{
+	case "$cur" in
+		*)
+			local counter=$( __west_pos_first_nonflag "$(__west_to_extglob "$global_args_opts")" )
+			if [ "$cword" -eq "$counter" ]; then
+				__set_comp "bash zsh fish"
+			fi
+			;;
+	esac
+}
+
+__comp_west_boards()
+{
+	local bool_opts="
+		--all-targets -a
+	"
+
+	local other_opts="
+		--format -f
+		--name -n
+	"
+
+	local dir_opts="
+		--arch-root
+		--board-root
+		--soc-root
+	"
+
+	all_opts="$bool_opts $dir_opts $other_opts"
+
+	case "$prev" in
+		$(__west_to_extglob "$other_opts") )
+			# We don't know how to autocomplete these.
+			return
+			;;
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west_shields()
+{
+	local other_opts="
+		--format -f
+		--name -n
+	"
+
+	local dir_opts="
+		--board-root
+	"
+
+	all_opts="$dir_opts $other_opts"
+
+	case "$prev" in
+		$(__west_to_extglob "$other_opts") )
+			# We don't know how to autocomplete these.
+			return
+			;;
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west_snippets()
+{
+	local other_opts="
+		--format -f
+		--name -n
+	"
+
+	local dir_opts="
+		--snippet-root
+	"
+
+	all_opts="$dir_opts $other_opts"
+
+	case "$prev" in
+		$(__west_to_extglob "$other_opts") )
+			# We don't know how to autocomplete these.
+			return
+			;;
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west_build()
+{
+	local bool_opts="
+		--cmake -c
+		--cmake-only
+		-n --just-print --dry-run --recon
+		--force -f
+		--sysbuild
+		--no-sysbuild
+	"
+
+	local special_opts="
+		--board -b
+		--snippet -S
+		--shield
+		--pristine -p
+	"
+
+	local dir_opts="
+		--build-dir -d
+	"
+
+	local other_opts="
+		--target -t
+		--test-item -T
+		--build-opt -o
+		--domain
+	"
+
+	all_opts="$bool_opts $special_opts $dir_opts $other_opts"
+
+	case "$prev" in
+		--board|-b)
+			__set_comp_west_boards
+			return
+			;;
+		--shield)
+			__set_comp_west_shields
+			return
+			;;
+		--snippet|-S)
+			__set_comp_west_snippets
+			return
+			;;
+		--pristine|-p)
+			__set_comp "auto always never"
+			return
+			;;
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+		# We don't know how to autocomplete those
+		$(__west_to_extglob "$other_opts") )
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+		*)
+			__set_comp_dirs
+			;;
+	esac
+}
+
+__comp_west_sign()
+{
+	local bool_opts="
+		--quiet -q
+		--force -f
+		--bin --no-bin
+		--hex --no-hex
+	"
+
+	local special_opts="
+		--tool -t
+	"
+
+	local dir_opts="
+		--build-dir -d
+		--tool-path -p
+		--tool-data -D
+	"
+
+	local file_opts="
+		--sbin -B
+		--shex -H
+	"
+
+	all_opts="$bool_opts $special_opts $dir_opts $file_opts"
+
+	case "$prev" in
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+		--tool|-t)
+			__set_comp "imgtool rimage"
+			return
+			;;
+		$(__west_to_extglob "$file_opts") )
+			__set_comp_files
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west_runner_cmd()
+{
+	# Common arguments for runners
+	local bool_opts="
+		--context -H
+		--rebuild
+		--no-rebuild
+	"
+
+	local dir_opts="
+		--board-dir
+		--openocd-search
+		--build-dir -d
+	"
+
+	local file_opts="
+		--file -f
+		--file-type -t
+		--elf-file
+		--hex-file
+		--bin-file
+		--gdb
+		--openocd
+	"
+
+	local other_opts="
+		--runner -r
+		--domain
+		--dev-id -i
+	"
+
+	all_opts="$bool_opts $other_opts $dir_opts $file_opts"
+
+	case "$prev" in
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+		$(__west_to_extglob "$file_opts") )
+			__set_comp_files
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west_flash()
+{
+	__comp_west_runner_cmd
+}
+
+__comp_west_debug()
+{
+	__comp_west_runner_cmd
+}
+
+__comp_west_debugserver()
+{
+	__comp_west_runner_cmd
+}
+
+__comp_west_attach()
+{
+	__comp_west_runner_cmd
+}
+
+__comp_west_rtt()
+{
+	__comp_west_runner_cmd
+}
+
+__comp_west_spdx()
+{
+	local bool_opts="
+		--init -i
+		--analyze-includes
+		--include-sdk
+	"
+
+	local dir_opts="
+		--build-dir -d
+		--namespace-prefix -n
+		--spdx-dir -s
+	"
+
+	local other_opts="
+		--namespace-prefix -n
+	"
+
+	all_opts="$bool_opts $other_opts $dir_opts"
+
+	case "$prev" in
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+
+		# We don't know how to autocomplete those
+		$(__west_to_extglob "$other_opts") )
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west_blobs()
+{
+	local other_opts="
+		--format -f
+	"
+
+	case "$prev" in
+		# We don't know how to autocomplete those
+		$(__west_to_extglob "$other_opts") )
+			return
+			;;
+		blobs)
+			__set_comp "list fetch clean"
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $other_opts
+			;;
+		*)
+			__set_comp_west_projs
+			;;
+	esac
+}
+
+__comp_west_twister()
+{
+	local bool_opts="
+		--aggressive-no-clean
+		--all -l
+		--all-deltas -D
+		--allow-installed-plugin
+		--build-only -b
+		--clobber-output -c
+		--cmake-only
+		--coverage -C
+		--create-rom-ram-report
+		--detailed-skipped-report
+		--detailed-test-id
+		--device-flash-with-test
+		--device-testing
+		--disable-suite-name-check
+		--disable-unrecognized-section-test
+		--disable-warnings-as-errors -W
+		--dry-run -y
+		--emulation-only
+		--enable-asan
+		--enable-coverage
+		--enable-lsan
+		--enable-size-report
+		--enable-slow -S
+		--enable-slow-only
+		--enable-ubsan
+		--enable-valgrind
+		--flash-before
+		--footprint-from-buildlog
+		--force-color
+		--force-platform -K
+		--force-toolchain
+		--ignore-platform-key
+		--inline-logs -i
+		--integration -G
+		--last-metrics -m
+		--list-tags
+		--list-tests
+		--make -k
+		--ninja -N
+		--no-clean -n
+		--no-detailed-test-id
+		--no-update -u
+		--only-failed -f
+		--overflow-as-errors
+		--persistent-hardware-map
+		--platform-reports
+		--prep-artifacts-for-testing
+		--quarantine-verify
+		--retry-build-errors
+		--short-build-path
+		--show-footprint
+		--shuffle-tests
+		--test-only
+		--test-tree
+		--timestamps
+		--verbose -v
+	"
+
+	local dir_opts="
+		--alt-config-root
+		--board-root -A
+		--coverage-basedir
+		--outdir -O
+		--report-dir -o
+		--testsuite-root -T
+	"
+
+	local file_opts="
+		--compare-report
+		--device-serial
+		--device-serial-pty
+		--gcov-tool
+		--generate-hardware-map
+		--hardware-map
+		--load-tests -F
+		--log-file
+		--package-artifacts
+		--pre-script
+		--quarantine-list
+		--save-tests -E
+		--size -z
+		--test-config
+	"
+
+	local special_opts="
+		--coverage-platform
+		--coverage-tool
+		--exclude-platform -P
+		--filter
+                --log-level
+		--platform -p
+		--runtime-artifact-cleanup -M
+	"
+
+	local other_opts="
+		--arch -a
+		--coverage-formats
+		--device-flash-timeout
+		--device-serial-baud
+		--exclude-tag -e
+		--extra-args -x
+		--fixture -X
+		--footprint-threshold -H
+		--jobs -j
+		--level
+		--pytest-args
+		--report-name
+		--report-suffix
+		--retry-failed
+		--retry-interval
+		--scenario --test -s
+		--seed
+		--shuffle-tests-seed
+		--sub-test
+		--subset -B
+		--tag -t
+		--timeout-multiplier
+		--vendor
+		--west-flash
+		--west-runner
+	"
+
+	all_opts="$bool_opts $dir_opts $file_opts $special_opts $other_opts"
+
+	case "$prev" in
+		--platform|-p|--exclude-platform|-P|--coverage-platform)
+			__set_comp_west_boards
+			return
+		        ;;
+
+		--coverage-tool)
+		        __set_comp "gcovr lcov"
+			return
+		        ;;
+
+		--filter)
+		        __set_comp "buildable runnable"
+			return
+		        ;;
+
+		--log-level)
+		        __set_comp "CRITICAL DEBUG ERROR INFO NOTSET WARNING"
+			return
+		        ;;
+
+		--runtime-artifact-cleanup|-M)
+		        __set_comp "all pass"
+			return
+		        ;;
+
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+
+		$(__west_to_extglob "$file_opts") )
+			__set_comp_files
+			return
+			;;
+
+		# We don't know how to autocomplete those
+		$(__west_to_extglob "$other_opts") )
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west_sdk()
+{
+	local bool_opts="
+		--interactive -i
+		--no-toolchains -T
+		--no-hosttools -H
+	"
+
+	local dir_opts="
+		--install-dir -d
+		--install-base -b
+	"
+
+	local other_opts="
+		--version
+		--toolchains -t
+		--personal-access-token
+		--api-url
+	"
+
+	all_opts="$bool_opts $dir_opts $other_opts"
+
+	case "$prev" in
+		sdk)
+			__set_comp "list install"
+			return
+			;;
+		list)
+			return
+			;;
+		$(__west_to_extglob "$dir_opts") )
+			__set_comp_dirs
+			return
+			;;
+		# We don't know how to autocomplete those
+		$(__west_to_extglob "$other_opts") )
+			return
+			;;
+	esac
+
+	case "$cur" in
+		-*)
+			__set_comp $all_opts
+			;;
+	esac
+}
+
+__comp_west()
+{
+	local previous_extglob_setting=$(shopt -p extglob)
+	shopt -s extglob
+	# Reset to default, to make sure compgen works properly
+	local IFS=$' \t\n'
+
+	local builtin_cmds=(
+		init
+		update
+		list
+		manifest
+		compare
+		diff
+		status
+		forall
+		grep
+		help
+		config
+		topdir
+	)
+
+	local zephyr_ext_cmds=(
+		completion
+		boards
+		shields
+		snippets
+		build
+		twister
+		sign
+		flash
+		debug
+		debugserver
+		attach
+		rtt
+		zephyr-export
+		spdx
+		blobs
+		bindesc
+		robot
+		simulate
+		sdk
+		packages
+		patch
+		gtags
+	)
+
+	local cmds=(${builtin_cmds[*]} ${zephyr_ext_cmds[*]})
+
+	# Global options for all commands
+	local global_bool_opts="
+		--help -h
+		--verbose -v
+		--version -V
+	"
+	local global_args_opts="
+		--zephyr-base -z
+	"
+
+	COMPREPLY=()
+	local cur words cword prev
+	_get_comp_words_by_ref -n : cur words cword prev
+
+	local command='west' command_pos=0
+	local counter=1
+	while [ "$counter" -lt "$cword" ]; do
+		case "${words[$counter]}" in
+			west)
+				return 0
+				;;
+			$(__west_to_extglob "$global_args_opts") )
+				(( counter++ ))
+				;;
+			-*)
+				;;
+			=)
+				(( counter++ ))
+				;;
+			*)
+				command="${words[$counter]}"
+				command_pos=$counter
+				break
+				;;
+		esac
+		(( counter++ ))
+	done
+
+
+	# Construct the function name to be called
+	local completions_func=__comp_west_${command//-/_}
+	#echo "comp_func: ${completions_func}"
+	declare -F $completions_func >/dev/null && $completions_func
+
+	# Restore the user's extglob setting
+	eval "$previous_extglob_setting"
+	return 0
+}
+
+eval "$__west_previous_extglob_setting"
+unset __west_previous_extglob_setting
+
+complete -F __comp_west west
+
+
+# ex: ts=4 sw=4 et filetype=sh

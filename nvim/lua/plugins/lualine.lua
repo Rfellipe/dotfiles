@@ -22,7 +22,6 @@ return {
 
     local opts = {
       options = {
-        theme = "citruszest",
         globalstatus = vim.o.laststatus == 3,
         disabled_filetypes = {
           statusline = {

@@ -1,49 +1,43 @@
 * {
-    font-family: "JetBrainsMono Nerd Font, monospace, sans-serif";
-    font-size: 14px;
+  font-family: "Courier New", monospace, sans-serif;
+  font-size: 14px;
 }
 
 window#waybar {
-    border-radius: 16px;
-    background: rgba(0, 0, 0, 0.38);
-    color: #93B1A6;
+  background: rgba(0, 0, 0, 0.9);
+  color: #93b1a6;
 }
 
 tooltip {
-    background: rgba(0, 0, 0, 0.38);
-    border-radius: 14px;
-    border: 1px solid #21262d;
+  border: 1px solid #21262d;
 }
 
 tooltip label {
-    padding: 6px 12px;
-    color: #93B1A6;
+  padding: 6px 12px;
+  color: #93b1a6;
 }
 
 #workspaces {
-    border-radius: 16px 24px 24px 16px;
-    margin: 0;
-    background-color: rgba(255, 255, 255, 0.08);
+  margin: 0;
 }
 
 #workspaces button {
-    min-width: 20px;
-    border-radius: 20px;
-    margin: 2px 0;
+  min-width: 20px;
+  margin: 2px 0;
 }
 
 #workspaces button:not(:last-child) {
-    margin-right: 2px;
-}
-
-#workspaces button:hover {
-    background: rgba(255, 255, 255, 0.08);
+  margin-right: 2px;
 }
 
 #workspaces button.active,
 #workspaces button.active:hover {
-    background: #5C8374;
-    color: #0d1117;
+  background: #262626;
+  color: #d9d9d9;
+}
+
+#workspaces button:hover {
+  border-color: #d9d9d9;
 }
 
 #cpu,
@@ -54,35 +48,31 @@ tooltip label {
 #network,
 #temperature,
 #workspaces,
-#custom-notification
-#backlight {
-    padding: 0px 14px;
-    background-color: rgba(255, 255, 255, 0.08);
+#custom-notification #backlight {
+  padding: 0px 14px;
 }
 
 #custom-notification,
 #tray {
-    padding: 0px 16px;
+  padding: 0px 16px;
 }
 
 #cpu {
-    border-radius: 24px 0 0 24px;
-    padding-left: 24px;
+  padding-left: 24px;
 }
 
 #battery.warning {
-    color: orange;
+  color: orange;
 }
 
 #battery.critical {
-    color: red;
+  color: red;
 }
 
 #temperature.critical {
-    color: red;
+  color: red;
 }
 
 #clock {
-    padding-right: 16px;
-    border-radius: 0 16px 16px 0;
+  padding-right: 16px;
 }

@@ -27,7 +27,32 @@ return {
     servers = {
       ts_ls = {},
       lua_ls = {},
-      pyright = {},
+      pyright = {
+        cmd = { "pyright-langserver", "--stdio" },
+        filetypes = { "python" },
+        root_markers = {
+          "pyrightconfig.json",
+          "pyproject.toml",
+          "setup.py",
+          "setup.cfg",
+          "requirements.txt",
+          "Pipfile",
+          ".git",
+        },
+        ---@type lspconfig.settings.pyright
+        settings = {
+          pyright = {
+            disableTaggedHints = true,
+          },
+          python = {
+            analysis = {
+              autoSearchPaths = true,
+              useLibraryCodeForTypes = true,
+              diagnosticMode = "openFilesOnly",
+            },
+          },
+        },
+      },
       rust_analyzer = {},
       jqls = {},
       bashls = {},
@@ -41,6 +66,7 @@ return {
         filetypes = { "qml", "qmljs" },
         root_markers = { ".git" },
       },
+      ginko_ls = {},
     },
   },
 }

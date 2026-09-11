@@ -60,6 +60,13 @@ local lsputils = require("util.lsputils")
 --   end,
 -- })
 
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "c" },
+  callback = function()
+    vim.b.autoformat = false
+  end,
+})
+
 -- Custom commands
 vim.api.nvim_create_user_command("Bda", "%bdelete", {})
 vim.api.nvim_create_user_command("Bo", '%bdelete | edit # | normal `"', {})

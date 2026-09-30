@@ -42,6 +42,6 @@ alias waybar-reset='killall -SIGUSR2 waybar'
 alias ls='ls --color=auto'
 alias grep='grep --color=auto'
 alias pacman='sudo pacman'
-alias zwest='source $PROJECTS/C/ZephyrWorkspace/.venv/bin/activate'
+alias zwest='source $HOME/Projects/C/ZephyrWorkspace/.venv/bin/activate'
 
 # --- Aliases End ---

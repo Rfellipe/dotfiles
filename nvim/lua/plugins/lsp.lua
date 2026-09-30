@@ -57,7 +57,12 @@ return {
       jqls = {},
       bashls = {},
       tailwindcss = {},
-      postgres_lsp = {},
+      postgres_lsp = {
+        cmd = { "postgres-language-server", "lsp-proxy" },
+        filetypes = { "sql" },
+        root_markers = { "postgres-language-server.jsonc" },
+        workspace_required = true,
+      },
       denols = {},
       gopls = {},
       clangd = {},

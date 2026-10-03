@@ -65,6 +65,14 @@ hl.window_rule({
 })
 
 hl.window_rule({
+	name = "float-vt",
+	match = {
+		class = "AgISOVirtualTerminal",
+	},
+	float = true,
+})
+
+hl.window_rule({
 	name = "chat-workspaces",
 	match = {
 		class = "(?:discord|elecwhat)",
